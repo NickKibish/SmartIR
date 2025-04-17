@@ -4,7 +4,7 @@
         "RAS-25SKVP2-ND",
         "RAS-35SKVP2-ND"
     ],
-    "supportedController": "Broadlink",
+    "supportedController": "UFOR11",
     "commandsEncoding": "Base64",
     "minTemperature": 17,
     "maxTemperature": 30,
