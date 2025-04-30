@@ -5,7 +5,7 @@
         "RAS-35SKVP2-ND"
     ],
     "supportedController": "UFOR11",
-    "commandsEncoding": "Base64",
+    "commandsEncoding": "Raw",
     "minTemperature": 17,
     "maxTemperature": 30,
     "precision": 1,
