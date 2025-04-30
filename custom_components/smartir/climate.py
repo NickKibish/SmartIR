@@ -368,8 +368,6 @@ class SmartIRClimate(ClimateEntity, RestoreEntity):
                 swing_mode = self._current_swing_mode
                 target_temperature = '{0:g}'.format(self._target_temperature)
 
-                _LOGGER.debug(f"Sending command for {self.name}: Mode: {operation_mode}, Fan: {fan_mode}, Swing: {swing_mode}, Temp: {target_temperature}")
-                
                 if operation_mode.lower() == HVACMode.OFF:
                     await self._controller.send(self._commands['off'])
                     return

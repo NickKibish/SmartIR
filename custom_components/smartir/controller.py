@@ -39,8 +39,9 @@ def get_controller(hass, controller, encoding, controller_data, delay):
         ESPHOME_CONTROLLER: ESPHomeController,
         UFOR11_CONTROLLER: UFOR11Controller
     }
+    # controller = UFOR11Controller
     try:
-        return controllers[controller](hass, controller, encoding, controller_data, delay)
+        return UFOR11Controller(hass, controller, encoding, controller_data, delay) # controllers[controller](hass, controller, encoding, controller_data, delay)
     except KeyError:
         raise Exception("The controller is not supported.")
 
