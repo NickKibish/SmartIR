@@ -43,7 +43,6 @@ SUPPORT_FLAGS = (
 PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
     vol.Optional(CONF_UNIQUE_ID): cv.string,
     vol.Optional(CONF_NAME, default=DEFAULT_NAME): cv.string,
-    vol.Required(CONF_DEVICE_CODE): cv.positive_int,
     vol.Required(CONF_CONTROLLER_DATA): cv.string,
     vol.Optional(CONF_DELAY, default=DEFAULT_DELAY): cv.positive_float,
     vol.Optional(CONF_TEMPERATURE_SENSOR): cv.entity_id,
@@ -55,15 +54,23 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
 async def async_setup_platform(hass, config, async_add_entities, discovery_info=None):
     """Set up the IR Climate platform."""
     _LOGGER.debug("Setting up the smartir platform")
-    device_code = config.get(CONF_DEVICE_CODE)
-    device_files_subdir = os.path.join('codes', 'climate')
-    device_files_absdir = os.path.join(COMPONENT_ABS_DIR, device_files_subdir)
+    # Use /config directory which is writable, instead of the read-only integration directory
+    device_files_absdir = '/config/smartir_codes/climate'
 
     if not os.path.isdir(device_files_absdir):
-        os.makedirs(device_files_absdir)
+        try:
+            os.makedirs(device_files_absdir)
+        except OSError:
+            # Directory might exist but can't be created due to read-only filesystem
+            # This is acceptable if the codes directory was pre-copied during deployment
+            pass
 
-    device_json_filename = str(device_code) + '.json'
+    device_json_filename = 'toshiba.json'
     device_json_path = os.path.join(device_files_absdir, device_json_filename)
+
+    _LOGGER.debug(f"Looking for device file at: {device_json_path}")
+    _LOGGER.debug(f"Device files directory: {device_files_absdir}")
+    _LOGGER.debug(f"File exists: {os.path.exists(device_json_path)}")
 
     if not os.path.exists(device_json_path):
         _LOGGER.warning("Couldn't find the device Json file. The component will " \
@@ -72,9 +79,9 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
         try:
             codes_source = ("https://raw.githubusercontent.com/"
                             "NickKibish/SmartIR/master/"
-                            "codes/climate/{}.json")
+                            "codes/climate/toshiba.json")
 
-            await Helper.downloader(codes_source.format(device_code), device_json_path)
+            await Helper.downloader(codes_source, device_json_path)
         except Exception:
             _LOGGER.error("There was an error while downloading the device Json file. " \
                           "Please check your internet connection or if the device code " \
@@ -88,8 +95,8 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
             content = await j.read()
             device_data = json.loads(content)
             _LOGGER.debug(f"{device_json_path} file loaded")
-    except Exception:
-        _LOGGER.error("The device JSON file is invalid")
+    except Exception as e:
+        _LOGGER.error(f"The device JSON file is invalid: {str(e)}")
         return
 
     async_add_entities([SmartIRClimate(
@@ -102,7 +109,7 @@ class SmartIRClimate(ClimateEntity, RestoreEntity):
         self.hass = hass
         self._unique_id = config.get(CONF_UNIQUE_ID)
         self._name = config.get(CONF_NAME)
-        self._device_code = config.get(CONF_DEVICE_CODE)
+        self._device_code = "toshiba"
         self._controller_data = config.get(CONF_CONTROLLER_DATA)
         self._delay = config.get(CONF_DELAY)
         self._temperature_sensor = config.get(CONF_TEMPERATURE_SENSOR)
