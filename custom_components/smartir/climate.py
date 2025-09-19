@@ -99,9 +99,14 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
         _LOGGER.error(f"The device JSON file is invalid: {str(e)}")
         return
 
+    _LOGGER.debug(f"Creating SmartIRClimate entity with config: {config}")
+    _LOGGER.debug(f"Device data keys: {list(device_data.keys()) if device_data else 'None'}")
+
     async_add_entities([SmartIRClimate(
         hass, config, device_data
     )])
+
+    _LOGGER.debug("SmartIRClimate entity added successfully")
 
 class SmartIRClimate(ClimateEntity, RestoreEntity):
     def __init__(self, hass, config, device_data):
@@ -305,14 +310,18 @@ class SmartIRClimate(ClimateEntity, RestoreEntity):
 
     async def async_set_temperature(self, **kwargs):
         """Set new target temperatures."""
-        hvac_mode = kwargs.get(ATTR_HVAC_MODE)  
+        _LOGGER.debug(f"async_set_temperature called with kwargs: {kwargs}")
+        hvac_mode = kwargs.get(ATTR_HVAC_MODE)
         temperature = kwargs.get(ATTR_TEMPERATURE)
-          
+
+        _LOGGER.debug(f"Setting temperature to {temperature}, hvac_mode: {hvac_mode}")
+
         if temperature is None:
+            _LOGGER.debug("Temperature is None, returning")
             return
-            
+
         if temperature < self._min_temperature or temperature > self._max_temperature:
-            _LOGGER.warning('The temperature value is out of min/max range') 
+            _LOGGER.warning('The temperature value is out of min/max range')
             return
 
         if self._precision == PRECISION_WHOLE:
@@ -320,22 +329,31 @@ class SmartIRClimate(ClimateEntity, RestoreEntity):
         else:
             self._target_temperature = round(temperature, 1)
 
+        _LOGGER.debug(f"Target temperature set to: {self._target_temperature}")
+
         if hvac_mode:
+            _LOGGER.debug(f"HVAC mode provided, calling async_set_hvac_mode with: {hvac_mode}")
             await self.async_set_hvac_mode(hvac_mode)
             return
-        
+
         if not self._hvac_mode.lower() == HVACMode.OFF:
+            _LOGGER.debug(f"Current mode is {self._hvac_mode}, sending command")
             await self.send_command()
+        else:
+            _LOGGER.debug("Current mode is OFF, not sending command")
 
         self.async_write_ha_state()
 
     async def async_set_hvac_mode(self, hvac_mode):
         """Set operation mode."""
+        _LOGGER.debug(f"async_set_hvac_mode called with: {hvac_mode}")
         self._hvac_mode = hvac_mode
-        
+
         if not hvac_mode == HVACMode.OFF:
             self._last_on_operation = hvac_mode
+            _LOGGER.debug(f"Set last_on_operation to: {hvac_mode}")
 
+        _LOGGER.debug(f"HVAC mode set to: {self._hvac_mode}, calling send_command")
         await self.send_command()
         self.async_write_ha_state()
 
@@ -357,16 +375,19 @@ class SmartIRClimate(ClimateEntity, RestoreEntity):
 
     async def async_turn_off(self):
         """Turn off."""
+        _LOGGER.debug("async_turn_off called")
         await self.async_set_hvac_mode(HVACMode.OFF)
-        
+
     async def async_turn_on(self):
         """Turn on."""
+        _LOGGER.debug(f"async_turn_on called, last_on_operation: {self._last_on_operation}")
         if self._last_on_operation is not None:
             await self.async_set_hvac_mode(self._last_on_operation)
         else:
             await self.async_set_hvac_mode(self._operation_modes[1])
 
     async def send_command(self):
+        _LOGGER.debug("send_command called")
         async with self._temp_lock:
             try:
                 self._on_by_remote = False
@@ -375,22 +396,47 @@ class SmartIRClimate(ClimateEntity, RestoreEntity):
                 swing_mode = self._current_swing_mode
                 target_temperature = '{0:g}'.format(self._target_temperature)
 
+                # For fan_only mode, fan modes are prefixed with 'fan_'
+                if operation_mode == 'fan_only' and not fan_mode.startswith('fan_'):
+                    fan_mode = f'fan_{fan_mode}'
+                    _LOGGER.debug(f"Adjusted fan mode for fan_only: {fan_mode}")
+
+                _LOGGER.debug(f"Sending command - Mode: {operation_mode}, Fan: {fan_mode}, Swing: {swing_mode}, Temp: {target_temperature}")
+                _LOGGER.debug(f"Available commands keys: {list(self._commands.keys()) if hasattr(self, '_commands') else 'No commands'}")
+                _LOGGER.debug(f"Controller: {self._controller}")
+                _LOGGER.debug(f"Controller data: {self._controller_data}")
+
                 if operation_mode.lower() == HVACMode.OFF:
+                    _LOGGER.debug(f"Sending OFF command: {self._commands['off']}")
                     await self._controller.send(self._commands['off'])
                     return
 
-                if 'on' in self._commands:
-                    await self._controller.send(self._commands['on'])
-                    await asyncio.sleep(self._delay)
-
                 if self._support_swing == True:
-                    await self._controller.send(
-                        self._commands[operation_mode][fan_mode][swing_mode][target_temperature])
+                    _LOGGER.debug(f"Trying to access: commands[{operation_mode}][{fan_mode}][{swing_mode}][{target_temperature}]")
+                    command = self._commands[operation_mode][fan_mode][swing_mode][target_temperature]
+                    _LOGGER.debug(f"Sending swing command: {command}")
+                    await self._controller.send(command)
                 else:
-                    await self._controller.send(
-                        self._commands[operation_mode][fan_mode][target_temperature])
+                    _LOGGER.debug(f"Trying to access: commands[{operation_mode}][{fan_mode}][{target_temperature}]")
+                    _LOGGER.debug(f"Available keys in commands[{operation_mode}]: {list(self._commands[operation_mode].keys()) if operation_mode in self._commands else 'N/A'}")
+                    if operation_mode in self._commands and fan_mode in self._commands[operation_mode]:
+                        _LOGGER.debug(f"Available temperatures for {operation_mode}/{fan_mode}: {list(self._commands[operation_mode][fan_mode].keys())}")
+                    command = self._commands[operation_mode][fan_mode][target_temperature]
+                    _LOGGER.debug(f"Sending non-swing command: {command}")
+                    await self._controller.send(command)
 
+                _LOGGER.debug("Command sent successfully")
+
+            except KeyError as e:
+                _LOGGER.error(f"KeyError in send_command: {str(e)}")
+                _LOGGER.error(f"Failed to find command path: {operation_mode}/{fan_mode}/{target_temperature}")
+                _LOGGER.error(f"Available operation modes: {list(self._commands.keys())}")
+                if operation_mode in self._commands:
+                    _LOGGER.error(f"Available fan modes for {operation_mode}: {list(self._commands[operation_mode].keys())}")
+                    if fan_mode in self._commands[operation_mode]:
+                        _LOGGER.error(f"Available temperatures for {operation_mode}/{fan_mode}: {list(self._commands[operation_mode][fan_mode].keys())}")
             except Exception as e:
+                _LOGGER.error(f"Error in send_command: {str(e)}")
                 _LOGGER.exception(e)
             
     async def _async_temp_sensor_changed(self, entity_id, old_state, new_state):

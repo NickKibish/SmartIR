@@ -86,10 +86,17 @@ class UFOR11Controller(MQTTController):
 
     async def send(self, command):
         """Send a command."""
+        _LOGGER.debug(f"UFOR11Controller sending command: {command}")
+        _LOGGER.debug(f"MQTT topic: {self._controller_data}")
+
         service_data = {
             'topic': self._controller_data,
             'payload': json.dumps({"ir_code_to_send": command})
         }
 
+        _LOGGER.debug(f"MQTT payload: {service_data['payload']}")
+
         await self.hass.services.async_call(
             'mqtt', 'publish', service_data)
+
+        _LOGGER.debug("MQTT publish service called successfully")
